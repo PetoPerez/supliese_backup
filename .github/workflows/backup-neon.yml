@@ -1,0 +1,44 @@
+name: Backup Railway → Neon
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'      # cada 15 minutos (UTC). Cámbialo a tu gusto.
+  workflow_dispatch:            # permite ejecutarlo a mano desde la pestaña Actions
+
+# Evita que dos respaldos se encimen si uno tarda
+concurrency:
+  group: backup-neon
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Instalar cliente PostgreSQL 18
+        run: |
+          set -euo pipefail
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+          pg_dump --version   # debe imprimir 18.x
+
+      - name: Volcar Railway y restaurar en Neon
+        env:
+          RAILWAY_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+          NEON_URL: ${{ secrets.NEON_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+
+          # 1. Volcado completo de Railway en formato custom (comprimido)
+          pg_dump "$RAILWAY_URL" --no-owner --no-acl -Fc -f dump.dump
+
+          # 2. Dejar Neon en blanco para una restauración limpia y determinista
+          psql "$NEON_URL" -v ON_ERROR_STOP=1 \
+            -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;"
+
+          # 3. Restaurar el volcado en Neon
+          pg_restore --no-owner --no-acl -d "$NEON_URL" dump.dump
+
+          echo "Respaldo completado: $(date -u)"
