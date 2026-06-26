@@ -22,7 +22,10 @@ jobs:
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
           sudo apt-get update
           sudo apt-get install -y postgresql-client-18
-          pg_dump --version   # debe imprimir 18.x
+          # El runner ya trae pg_dump 16; forzamos que el 18 tenga prioridad
+          # en el PATH de los pasos siguientes:
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/18/bin/pg_dump --version   # debe imprimir 18.x
 
       - name: Volcar Railway y restaurar en Neon
         env:
@@ -30,6 +33,7 @@ jobs:
           NEON_URL: ${{ secrets.NEON_DATABASE_URL }}
         run: |
           set -euo pipefail
+          pg_dump --version   # confirma que ahora resuelve a 18.x
 
           # 1. Volcado completo de Railway en formato custom (comprimido)
           pg_dump "$RAILWAY_URL" --no-owner --no-acl -Fc -f dump.dump
